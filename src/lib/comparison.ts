@@ -4,12 +4,23 @@ import { extractShortNumber } from './utils';
 export const compareDocuments = (
   userDocuments: Document[],
   pdfEntries: PdfEntry[],
-  pdfFilename: string
+  pdfFilename: string,
+  filterMonth?: { year: number; month: number }
 ): ComparisonResult => {
   const results: ComparisonItem[] = [];
 
+  // Filter documents by month if specified
+  let filteredUserDocs = userDocuments;
+  if (filterMonth) {
+    filteredUserDocs = userDocuments.filter(doc => {
+      const docDate = new Date(doc.created_at);
+      return docDate.getFullYear() === filterMonth.year &&
+             docDate.getMonth() + 1 === filterMonth.month;
+    });
+  }
+
   const userByShort = new Map<string, Document>();
-  for (const doc of userDocuments) {
+  for (const doc of filteredUserDocs) {
     if (userByShort.has(doc.document_number_short)) {
       console.warn(`Short number collision in user documents: ${doc.document_number_short}`);
     }
@@ -31,12 +42,15 @@ export const compareDocuments = (
 
   userByShort.forEach((doc, short) => {
     if (pdfByShort.has(short)) {
+      const pdfEntry = pdfByShort.get(short)!;
       results.push({
         document_number: doc.document_number,
         document_number_short: short,
         client_name: doc.client_name,
         status: 'matched',
         source: 'user',
+        amount: pdfEntry.amount || undefined,
+        date: pdfEntry.date || undefined,
       });
       matchedCount++;
     } else {
@@ -59,6 +73,8 @@ export const compareDocuments = (
         client_name: entry.client_name,
         status: 'extra_in_pdf',
         source: 'pdf',
+        amount: entry.amount || undefined,
+        date: entry.date || undefined,
       });
       extraInPdfCount++;
     }
@@ -73,7 +89,7 @@ export const compareDocuments = (
 
   return {
     pdf_filename: pdfFilename,
-    total_user_entries: userDocuments.length,
+    total_user_entries: filteredUserDocs.length,
     total_pdf_entries: pdfEntries.length,
     matched_count: matchedCount,
     missing_from_pdf_count: missingFromPdfCount,

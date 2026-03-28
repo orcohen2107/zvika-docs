@@ -1,19 +1,30 @@
 'use client';
 
 import { useState, useCallback } from 'react';
+import { toast } from 'sonner';
+import { FileText, Check } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { Document, PdfEntry, ComparisonResult, ComparisonItem } from '@/types';
+import { Document, PdfEntry, ComparisonResult } from '@/types';
 import { compareDocuments } from '@/lib/comparison';
 import { cn } from '@/lib/utils';
+import { ResultsTable } from '@/components/results-table';
 
 export default function ComparePage() {
   const supabase = createClient();
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [result, setResult] = useState<ComparisonResult | null>(null);
   const [saved, setSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Month selector state
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+
+  // Generate year options (2 years back to 1 year forward)
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 4 }, (_, i) => currentYear - 2 + i);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -21,7 +32,6 @@ export default function ComparePage() {
       setFile(selected);
       setResult(null);
       setSaved(false);
-      setError('');
     }
   };
 
@@ -32,14 +42,12 @@ export default function ComparePage() {
       setFile(dropped);
       setResult(null);
       setSaved(false);
-      setError('');
     }
   }, []);
 
   const handleCompare = async () => {
     if (!file) return;
     setLoading(true);
-    setError('');
 
     try {
       const formData = new FormData();
@@ -59,7 +67,7 @@ export default function ComparePage() {
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        setError('אינך מחובר');
+        toast.error('אינך מחובר');
         setLoading(false);
         return;
       }
@@ -67,7 +75,7 @@ export default function ComparePage() {
       const { data: userDocs } = await supabase.from('documents').select('*').eq('user_id', user.id);
 
       if (!userDocs || userDocs.length === 0) {
-        setError('אין תעודות שהוזנו במערכת. הוסף תעודות בדשבורד קודם.');
+        toast.error('אין תעודות שהוזנו במערכת. הוסף תעודות בדשבורד קודם.');
         setLoading(false);
         return;
       }
@@ -75,12 +83,14 @@ export default function ComparePage() {
       const comparison = compareDocuments(
         userDocs as Document[],
         pdfEntries,
-        file.name
+        file.name,
+        { year: selectedYear, month: selectedMonth }
       );
 
       setResult(comparison);
+      toast.success('השוואה בוצעה בהצלחה');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'שגיאה בהשוואה');
+      toast.error(err instanceof Error ? err.message : 'שגיאה בהשוואה');
     }
 
     setLoading(false);
@@ -92,7 +102,7 @@ export default function ComparePage() {
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      setError('אינך מחובר');
+      toast.error('אינך מחובר');
       setIsSaving(false);
       return;
     }
@@ -109,22 +119,47 @@ export default function ComparePage() {
     });
 
     if (saveError) {
-      setError('שגיאה בשמירת התוצאות');
+      toast.error('שגיאה בשמירת התוצאות');
     } else {
       setSaved(true);
+      toast.success('התוצאות נשמרו בהצלחה');
     }
     setIsSaving(false);
-  };
-
-  const statusConfig: Record<string, { label: string; rowBg: string; badgeBg: string; badgeText: string }> = {
-    matched: { label: 'נמצא', rowBg: 'bg-green-50', badgeBg: 'bg-green-100', badgeText: 'text-green-700' },
-    missing_from_pdf: { label: 'חסר ב-PDF', rowBg: 'bg-red-50', badgeBg: 'bg-red-100', badgeText: 'text-red-700' },
-    extra_in_pdf: { label: 'לא הוזן', rowBg: 'bg-amber-50', badgeBg: 'bg-amber-100', badgeText: 'text-amber-700' },
   };
 
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">השוואה עם PDF</h1>
+
+      {/* Month selector */}
+      <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
+        <label className="block text-sm font-medium mb-3">בחר חודש להשוואה</label>
+        <div className="flex gap-4 flex-col sm:flex-row">
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+            className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:border-blue-500 outline-none"
+          >
+            {Array.from({ length: 12 }, (_, i) => i + 1).map(month => (
+              <option key={month} value={month}>
+                {new Date(2024, month - 1).toLocaleString('he-IL', { month: 'long' })} ({month})
+              </option>
+            ))}
+          </select>
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+            className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:border-blue-500 outline-none"
+          >
+            {yearOptions.map(year => (
+              <option key={year} value={year}>{year}</option>
+            ))}
+          </select>
+          <span className="text-sm text-gray-600 self-center">
+            {new Date(selectedYear, selectedMonth - 1).toLocaleString('he-IL', { month: 'long', year: 'numeric' })}
+          </span>
+        </div>
+      </div>
 
       {/* Upload area */}
       <div className="bg-white rounded-xl shadow-sm border p-6 mb-8">
@@ -133,7 +168,9 @@ export default function ComparePage() {
           onDrop={handleDrop}
           className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-400 transition-colors"
         >
-          <div className="text-4xl mb-3">📄</div>
+          <div className="mb-3 flex justify-center">
+            <FileText className="w-10 h-10 text-gray-400" />
+          </div>
           <p className="text-gray-600 mb-2">
             {file ? file.name : 'גרור קובץ PDF לכאן או לחץ לבחירה'}
           </p>
@@ -161,12 +198,6 @@ export default function ComparePage() {
             >
               {loading ? 'מעבד...' : 'בצע השוואה'}
             </button>
-          </div>
-        )}
-
-        {error && (
-          <div className="bg-red-50 text-red-600 text-sm p-3 rounded-lg mt-4">
-            {error}
           </div>
         )}
       </div>
@@ -206,49 +237,13 @@ export default function ComparePage() {
                   : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed'
               )}
             >
-              {saved ? '✓ נשמר בהצלחה' : isSaving ? 'שומר...' : 'שמור תוצאות'}
+              {saved && <Check className="w-4 h-4" />}
+              <span>{saved ? 'נשמר בהצלחה' : isSaving ? 'שומר...' : 'שמור תוצאות'}</span>
             </button>
           </div>
 
           {/* Results table */}
-          <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">סטטוס</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">מספר תעודה</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">4 אחרונות</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">שם לקוח</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">מקור</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {result.results.map((item: ComparisonItem, idx: number) => {
-                    const config = statusConfig[item.status];
-                    return (
-                      <tr key={idx} className={config.rowBg}>
-                        <td className="px-6 py-3">
-                          <span className={cn(
-                            'inline-block px-2.5 py-0.5 rounded-full text-xs font-medium',
-                            config.badgeBg, config.badgeText
-                          )}>
-                            {config.label}
-                          </span>
-                        </td>
-                        <td className="px-6 py-3 text-sm font-mono" dir="ltr">{item.document_number}</td>
-                        <td className="px-6 py-3 text-sm font-mono font-bold" dir="ltr">{item.document_number_short}</td>
-                        <td className="px-6 py-3 text-sm">{item.client_name}</td>
-                        <td className="px-6 py-3 text-sm text-gray-500">
-                          {item.source === 'user' ? 'הוזן ידנית' : 'מה-PDF'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <ResultsTable items={result.results} exportFilename={result.pdf_filename} />
         </div>
       )}
     </div>

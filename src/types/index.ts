@@ -31,6 +31,8 @@ export interface ComparisonItem {
   client_name: string;
   status: ComparisonStatus;
   source: 'user' | 'pdf';
+  amount?: number;
+  date?: string;
 }
 
 export interface ComparisonResult {

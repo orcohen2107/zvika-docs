@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { Navbar } from '@/components/navbar';
 
 export default async function AdminLayout({
   children,
@@ -23,5 +24,12 @@ export default async function AdminLayout({
     redirect('/dashboard');
   }
 
-  return <>{children}</>;
+  return (
+    <div className="min-h-screen bg-slate-50">
+      <Navbar />
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {children}
+      </main>
+    </div>
+  );
 }

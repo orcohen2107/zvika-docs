@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
+import { BarChart3, Scale, ScrollText, Users, LogOut } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { Profile } from '@/types';
@@ -43,14 +44,20 @@ export const Navbar = () => {
     router.push('/login');
   };
 
-  const links = [
-    { href: '/dashboard', label: 'דשבורד', icon: '📊' },
-    { href: '/dashboard/compare', label: 'השוואה', icon: '⚖️' },
-    { href: '/dashboard/history', label: 'היסטוריה', icon: '📜' },
+  type NavLink = {
+    href: string;
+    label: string;
+    Icon: typeof BarChart3;
+  };
+
+  const links: NavLink[] = [
+    { href: '/dashboard', label: 'דשבורד', Icon: BarChart3 },
+    { href: '/dashboard/compare', label: 'השוואה', Icon: Scale },
+    { href: '/dashboard/history', label: 'היסטוריה', Icon: ScrollText },
   ];
 
   if (profile?.role === 'admin') {
-    links.push({ href: '/admin', label: 'ניהול משתמשים', icon: '👥' });
+    links.push({ href: '/admin', label: 'ניהול משתמשים', Icon: Users });
   }
 
   return (
@@ -73,7 +80,7 @@ export const Navbar = () => {
                       : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                   )}
                 >
-                  <span>{link.icon}</span>
+                  <link.Icon className="w-4 h-4" />
                   {link.label}
                 </Link>
               ))}
@@ -89,7 +96,7 @@ export const Navbar = () => {
               onClick={handleLogout}
               className="flex items-center gap-2 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 font-medium px-3 py-1.5 rounded-lg transition-colors"
             >
-              <span>🚪</span>
+              <LogOut className="w-4 h-4" />
               התנתק
             </button>
           </div>
@@ -107,7 +114,7 @@ export const Navbar = () => {
                 : 'text-gray-600 hover:bg-gray-200'
             )}
           >
-            <span>{link.icon}</span>
+            <link.Icon className="w-4 h-4" />
             {link.label}
           </Link>
         ))}

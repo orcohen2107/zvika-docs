@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { ComparisonResult, ComparisonItem } from '@/types';
-import { formatDate, cn } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
+import { ResultsTable } from '@/components/results-table';
+import { HistoryCardSkeleton } from '@/components/skeleton';
 
 interface StoredComparison extends ComparisonResult {
   id: string;
@@ -13,24 +15,21 @@ interface StoredComparison extends ComparisonResult {
 export default function HistoryPage() {
   const supabase = createClient();
   const [comparisons, setComparisons] = useState<StoredComparison[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<StoredComparison | null>(null);
 
   useEffect(() => {
     const fetchComparisons = async () => {
+      setLoading(true);
       const { data } = await supabase
         .from('comparisons')
         .select('*')
         .order('created_at', { ascending: false });
       if (data) setComparisons(data as StoredComparison[]);
+      setLoading(false);
     };
     fetchComparisons();
   }, [supabase]);
-
-  const statusConfig: Record<string, { label: string; rowBg: string; badgeBg: string; badgeText: string }> = {
-    matched: { label: 'נמצא', rowBg: 'bg-green-50', badgeBg: 'bg-green-100', badgeText: 'text-green-700' },
-    missing_from_pdf: { label: 'חסר ב-PDF', rowBg: 'bg-red-50', badgeBg: 'bg-red-100', badgeText: 'text-red-700' },
-    extra_in_pdf: { label: 'לא הוזן', rowBg: 'bg-amber-50', badgeBg: 'bg-amber-100', badgeText: 'text-amber-700' },
-  };
 
   if (selected) {
     return (
@@ -66,41 +65,7 @@ export default function HistoryPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">סטטוס</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">מספר תעודה</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">4 אחרונות</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">שם לקוח</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">מקור</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {(selected.results as ComparisonItem[]).map((item, idx) => {
-                  const config = statusConfig[item.status];
-                  return (
-                    <tr key={idx} className={config.rowBg}>
-                      <td className="px-6 py-3">
-                        <span className={cn('inline-block px-2.5 py-0.5 rounded-full text-xs font-medium', config.badgeBg, config.badgeText)}>
-                          {config.label}
-                        </span>
-                      </td>
-                      <td className="px-6 py-3 text-sm font-mono" dir="ltr">{item.document_number}</td>
-                      <td className="px-6 py-3 text-sm font-mono font-bold" dir="ltr">{item.document_number_short}</td>
-                      <td className="px-6 py-3 text-sm">{item.client_name}</td>
-                      <td className="px-6 py-3 text-sm text-gray-500">
-                        {item.source === 'user' ? 'הוזן ידנית' : 'מה-PDF'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <ResultsTable items={selected.results as ComparisonItem[]} />
       </div>
     );
   }
@@ -109,7 +74,13 @@ export default function HistoryPage() {
     <div>
       <h1 className="text-2xl font-bold mb-6">היסטוריית השוואות</h1>
 
-      {comparisons.length === 0 ? (
+      {loading ? (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <HistoryCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : comparisons.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border p-12 text-center text-gray-400">
           <p className="text-lg">אין השוואות קודמות</p>
           <p className="text-sm mt-1">בצע השוואה ושמור את התוצאות</p>

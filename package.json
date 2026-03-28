@@ -11,10 +11,13 @@
   "dependencies": {
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.78.0",
+    "lucide-react": "^1.7.0",
     "next": "^14.2.35",
     "pdf-parse": "^1.1.1",
     "react": "^18",
-    "react-dom": "^18"
+    "react-dom": "^18",
+    "recharts": "^3.8.1",
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@types/node": "^20",
