@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+  direction: rtl;
+}
+
+input, textarea, select {
+  direction: rtl;
+}
+
+input[type="number"],
+input[dir="ltr"] {
+  direction: ltr;
+  text-align: right;
+}
+
+/* Smooth transitions */
+button, input {
+  @apply transition-all duration-200;
+}
