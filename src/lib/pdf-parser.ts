@@ -22,9 +22,15 @@ export const parsePdfText = (text: string): PdfEntry[] => {
       const dateMatch = line.match(/\d{2}\/\d{2}\/\d{4}/);
       const date = dateMatch ? dateMatch[0] : '';
 
-      const hebrewMatch = line.match(/[\u0590-\u05FF\s"().,-]+/g);
+      // Extract Hebrew text: match continuous sequences of Hebrew letters, spaces, and common punctuation
+      // Use word boundary approach to avoid fragmentation
+      const hebrewMatch = line.match(/[\u0590-\u05FF][\u0590-\u05FF\s"().,-]*/g);
       const clientName = hebrewMatch
-        ? hebrewMatch.join(' ').trim().replace(/\s+/g, ' ')
+        ? hebrewMatch
+            .map(match => match.trim()) // Trim each match
+            .filter(match => /[\u0590-\u05FF]{2,}/.test(match)) // Keep only matches with 2+ Hebrew letters
+            .join(' ') // Join with space
+            .replace(/\s+/g, ' ') // Normalize spaces
         : '';
 
       entries.push({
