@@ -87,11 +87,11 @@ export default function DashboardPage() {
 
   const filteredDocuments = useMemo(() => {
     if (!debouncedSearchQuery.trim()) return documents;
-    const q = debouncedSearchQuery.trim().toLowerCase();
+    const q = debouncedSearchQuery.trim();
     return documents.filter(doc =>
-      doc.document_number.toLowerCase().includes(q) ||
+      doc.document_number.toLowerCase().includes(q.toLowerCase()) ||
       doc.document_number_short.includes(q) ||
-      doc.client_name.toLowerCase().includes(q)
+      doc.client_name.includes(q) // Hebrew text: no toLowerCase, match exactly
     );
   }, [documents, debouncedSearchQuery]);
 
