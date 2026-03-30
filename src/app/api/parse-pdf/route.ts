@@ -61,7 +61,9 @@ export async function POST(request: NextRequest) {
       filename: file.name,
     });
   } catch (error) {
-    console.error('PDF parsing error:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('PDF parsing error:', error);
+    }
     return NextResponse.json(
       { error: 'שגיאה בקריאת הקובץ' },
       { status: 500 }

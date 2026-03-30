@@ -1,14 +1,24 @@
+export const DEBOUNCE_DELAY_MS = 300;
+
 export const extractShortNumber = (docNumber: string): string => {
   const digitsOnly = docNumber.replace(/\D/g, '');
   return digitsOnly.slice(-4);
 };
 
 export const formatDate = (dateString: string): string => {
-  return new Date(dateString).toLocaleDateString('he-IL', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      return 'תאריך לא ידוע';
+    }
+    return date.toLocaleDateString('he-IL', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+  } catch {
+    return 'תאריך לא ידוע';
+  }
 };
 
 export const cn = (...classes: (string | undefined | false)[]) =>

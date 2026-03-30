@@ -1,57 +1,85 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { Profile } from '@/types';
 import { formatDate } from '@/lib/utils';
 
 export default function AdminPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchProfiles = async () => {
-      const { data: allProfiles } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (allProfiles) setProfiles(allProfiles);
-      setLoading(false);
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (data) setProfiles(data as Profile[]);
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error fetching profiles:', error);
+        }
+        toast.error('שגיאה בטעינת הפרופילים');
+      } finally {
+        setLoading(false);
+      }
     };
     fetchProfiles();
   }, [supabase]);
 
   const handleApprove = async (userId: string) => {
-    const { error: updateError } = await supabase.from('profiles').update({ is_approved: true }).eq('id', userId);
-    if (updateError) {
-      toast.error('שגיאה בעדכון המשתמש');
-      return;
+    try {
+      const { error: updateError } = await supabase.from('profiles').update({ is_approved: true }).eq('id', userId);
+      if (updateError) {
+        toast.error('שגיאה בהאשרה');
+        return;
+      }
+      setProfiles(prev => prev.map(p => p.id === userId ? { ...p, is_approved: true } : p));
+      toast.success('המשתמש אושר בהצלחה');
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Error approving user:', error);
+      }
+      toast.error('שגיאה בהאשרה');
     }
-    setProfiles(prev => prev.map(p => p.id === userId ? { ...p, is_approved: true } : p));
-    toast.success('המשתמש אושר בהצלחה');
   };
 
   const handleRevoke = async (userId: string) => {
-    const { error: updateError } = await supabase.from('profiles').update({ is_approved: false }).eq('id', userId);
-    if (updateError) {
-      toast.error('שגיאה בעדכון המשתמש');
-      return;
+    try {
+      const { error: updateError } = await supabase.from('profiles').update({ is_approved: false }).eq('id', userId);
+      if (updateError) {
+        toast.error('שגיאה בביטול ההרשאה');
+        return;
+      }
+      setProfiles(prev => prev.map(p => p.id === userId ? { ...p, is_approved: false } : p));
+      toast.success('ההרשאה בוטלה');
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Error revoking approval:', error);
+      }
+      toast.error('שגיאה בביטול ההרשאה');
     }
-    setProfiles(prev => prev.map(p => p.id === userId ? { ...p, is_approved: false } : p));
-    toast.success('הגישה בוטלה בהצלחה');
   };
 
   const handleMakeAdmin = async (userId: string) => {
-    const { error: updateError } = await supabase.from('profiles').update({ role: 'admin', is_approved: true }).eq('id', userId);
-    if (updateError) {
-      toast.error('שגיאה בעדכון המשתמש');
-      return;
+    try {
+      const { error: updateError } = await supabase.from('profiles').update({ role: 'admin', is_approved: true }).eq('id', userId);
+      if (updateError) {
+        toast.error('שגיאה בהעלאת הרשאה');
+        return;
+      }
+      setProfiles(prev => prev.map(p => p.id === userId ? { ...p, role: 'admin' as const, is_approved: true } : p));
+      toast.success('המשתמש הוא עכשיו מנהל');
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Error making admin:', error);
+      }
+      toast.error('שגיאה בהעלאת הרשאה');
     }
-    setProfiles(prev => prev.map(p => p.id === userId ? { ...p, role: 'admin' as const, is_approved: true } : p));
-    toast.success('המשתמש הפך למנהל בהצלחה');
   };
 
   if (loading) {
@@ -84,10 +112,10 @@ export default function AdminPage() {
                   <div className="font-medium">{profile.full_name}</div>
                   <div className="text-sm text-gray-500">נרשם: {formatDate(profile.created_at)}</div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 sm:flex-nowrap">
                   <button
                     onClick={() => handleApprove(profile.id)}
-                    className="bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-green-700 transition-colors"
+                    className="w-full sm:w-auto bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-green-700 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                   >
                     אשר
                   </button>
@@ -127,16 +155,16 @@ export default function AdminPage() {
                   <div className="text-sm text-gray-500">נרשם: {formatDate(profile.created_at)}</div>
                 </div>
                 {profile.role !== 'admin' && (
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2 sm:flex-nowrap">
                     <button
                       onClick={() => handleMakeAdmin(profile.id)}
-                      className="text-blue-600 hover:text-blue-800 text-sm border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50 transition-colors"
+                      className="w-full sm:w-auto text-blue-600 hover:text-blue-800 text-sm border border-blue-200 px-3 py-1 rounded-lg hover:bg-blue-50 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                     >
                       הפוך למנהל
                     </button>
                     <button
                       onClick={() => handleRevoke(profile.id)}
-                      className="text-red-500 hover:text-red-700 text-sm border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50 transition-colors"
+                      className="w-full sm:w-auto text-red-500 hover:text-red-700 text-sm border border-red-200 px-3 py-1 rounded-lg hover:bg-red-50 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                     >
                       בטל גישה
                     </button>

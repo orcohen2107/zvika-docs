@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -57,10 +57,11 @@ export default function RegisterPage() {
 
           <form onSubmit={handleRegister} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="register-name" className="block text-sm font-medium text-gray-700 mb-1">
                 שם מלא
               </label>
               <input
+                id="register-name"
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
@@ -71,10 +72,11 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="register-email" className="block text-sm font-medium text-gray-700 mb-1">
                 אימייל
               </label>
               <input
+                id="register-email"
                 type="email"
                 dir="ltr"
                 value={email}
@@ -86,10 +88,11 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="register-password" className="block text-sm font-medium text-gray-700 mb-1">
                 סיסמה
               </label>
               <input
+                id="register-password"
                 type="password"
                 dir="ltr"
                 value={password}

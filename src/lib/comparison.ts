@@ -21,7 +21,7 @@ export const compareDocuments = (
 
   const userByShort = new Map<string, Document>();
   for (const doc of filteredUserDocs) {
-    if (userByShort.has(doc.document_number_short)) {
+    if (userByShort.has(doc.document_number_short) && process.env.NODE_ENV === 'development') {
       console.warn(`Short number collision in user documents: ${doc.document_number_short}`);
     }
     userByShort.set(doc.document_number_short, doc);
@@ -30,7 +30,7 @@ export const compareDocuments = (
   const pdfByShort = new Map<string, PdfEntry>();
   for (const entry of pdfEntries) {
     const short = extractShortNumber(entry.document_number);
-    if (pdfByShort.has(short)) {
+    if (pdfByShort.has(short) && process.env.NODE_ENV === 'development') {
       console.warn(`Short number collision in PDF entries: ${short}`);
     }
     pdfByShort.set(short, entry);
