@@ -1,24 +1,24 @@
 'use client';
 
+import { memo, useMemo } from 'react';
 import { Download } from 'lucide-react';
 import { ComparisonItem } from '@/types';
 import { cn, exportComparisonToCsv } from '@/lib/utils';
 
 interface ResultsTableProps {
   items: ComparisonItem[];
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  exportFilename?: string; // Used in Phase 7 (CSV export)
+  exportFilename?: string;
 }
 
-export function ResultsTable({ items, exportFilename }: ResultsTableProps) {
-  // exportFilename is used in Phase 7 for CSV export functionality
-  void exportFilename;
-
-  const statusConfig: Record<string, { label: string; rowBg: string; badgeBg: string; badgeText: string }> = {
-    matched: { label: 'נמצא', rowBg: 'bg-green-50', badgeBg: 'bg-green-100', badgeText: 'text-green-700' },
-    missing_from_pdf: { label: 'חסר ב-PDF', rowBg: 'bg-red-50', badgeBg: 'bg-red-100', badgeText: 'text-red-700' },
-    extra_in_pdf: { label: 'לא הוזן', rowBg: 'bg-amber-50', badgeBg: 'bg-amber-100', badgeText: 'text-amber-700' },
-  };
+function ResultsTableComponent({ items, exportFilename }: ResultsTableProps) {
+  const statusConfig = useMemo<Record<string, { label: string; rowBg: string; badgeBg: string; badgeText: string }>>(
+    () => ({
+      matched: { label: 'נמצא', rowBg: 'bg-green-50', badgeBg: 'bg-green-100', badgeText: 'text-green-700' },
+      missing_from_pdf: { label: 'חסר ב-PDF', rowBg: 'bg-red-50', badgeBg: 'bg-red-100', badgeText: 'text-red-700' },
+      extra_in_pdf: { label: 'לא הוזן', rowBg: 'bg-amber-50', badgeBg: 'bg-amber-100', badgeText: 'text-amber-700' },
+    }),
+    []
+  );
 
   return (
     <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
@@ -47,10 +47,10 @@ export function ResultsTable({ items, exportFilename }: ResultsTableProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {items.map((item: ComparisonItem, idx: number) => {
+            {items.map((item: ComparisonItem) => {
               const config = statusConfig[item.status];
               return (
-                <tr key={idx} className={config.rowBg}>
+                <tr key={`${item.document_number}-${item.status}`} className={config.rowBg}>
                   <td className="px-6 py-3">
                     <span className={cn(
                       'inline-block px-2.5 py-0.5 rounded-full text-xs font-medium',
@@ -80,3 +80,7 @@ export function ResultsTable({ items, exportFilename }: ResultsTableProps) {
     </div>
   );
 }
+
+ResultsTableComponent.displayName = 'ResultsTable';
+
+export const ResultsTable = memo(ResultsTableComponent);

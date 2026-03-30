@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
 import { FileText, Check } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -10,12 +10,18 @@ import { cn } from '@/lib/utils';
 import { ResultsTable } from '@/components/results-table';
 
 export default function ComparePage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ComparisonResult | null>(null);
   const [saved, setSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!saved) return;
+    const timeoutId = setTimeout(() => setSaved(false), 3000);
+    return () => clearTimeout(timeoutId);
+  }, [saved]);
 
   // Month selector state
   const now = new Date();
@@ -65,18 +71,17 @@ export default function ComparePage() {
 
       const { entries: pdfEntries }: { entries: PdfEntry[] } = await response.json();
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data, error: authError } = await supabase.auth.getUser();
+      if (authError || !data?.user) {
         toast.error('אינך מחובר');
-        setLoading(false);
         return;
       }
+      const user = data.user;
 
       const { data: userDocs } = await supabase.from('documents').select('*').eq('user_id', user.id);
 
       if (!userDocs || userDocs.length === 0) {
         toast.error('אין תעודות שהוזנו במערכת. הוסף תעודות בדשבורד קודם.');
-        setLoading(false);
         return;
       }
 
@@ -91,40 +96,49 @@ export default function ComparePage() {
       toast.success('השוואה בוצעה בהצלחה');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'שגיאה בהשוואה');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleSave = async () => {
     if (!result) return;
     setIsSaving(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error('אינך מחובר');
-      setIsSaving(false);
-      return;
-    }
+    try {
+      const { data, error: authError } = await supabase.auth.getUser();
+      if (authError || !data?.user) {
+        toast.error('אינך מחובר. אנא התחבר שוב');
+        return;
+      }
+      const user = data.user;
 
-    const { error: saveError } = await supabase.from('comparisons').insert({
-      user_id: user.id,
-      pdf_filename: result.pdf_filename,
-      total_user_entries: result.total_user_entries,
-      total_pdf_entries: result.total_pdf_entries,
-      matched_count: result.matched_count,
-      missing_from_pdf_count: result.missing_from_pdf_count,
-      extra_in_pdf_count: result.extra_in_pdf_count,
-      results: result.results,
-    });
+      const { error } = await supabase.from('comparisons').insert({
+        user_id: user.id,
+        pdf_filename: result.pdf_filename,
+        total_user_entries: result.total_user_entries,
+        total_pdf_entries: result.total_pdf_entries,
+        matched_count: result.matched_count,
+        missing_from_pdf_count: result.missing_from_pdf_count,
+        extra_in_pdf_count: result.extra_in_pdf_count,
+        results: result.results,
+      });
 
-    if (saveError) {
-      toast.error('שגיאה בשמירת התוצאות');
-    } else {
+      if (error) {
+        toast.error('שגיאה בשמירת התוצאות');
+        return;
+      }
+
       setSaved(true);
       toast.success('התוצאות נשמרו בהצלחה');
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Error saving comparison:', error);
+      }
+      toast.error('שגיאה בשמירת התוצאות');
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
 
   return (
@@ -133,12 +147,13 @@ export default function ComparePage() {
 
       {/* Month selector */}
       <div className="bg-white rounded-xl shadow-sm border p-6 mb-6">
-        <label className="block text-sm font-medium mb-3">בחר חודש להשוואה</label>
+        <label htmlFor="month-select" className="block text-sm font-medium mb-3">בחר חודש להשוואה</label>
         <div className="flex gap-4 flex-col sm:flex-row">
           <select
+            id="month-select"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(Number(e.target.value))}
-            className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:border-blue-500 outline-none"
+            className="w-full sm:w-auto px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 outline-none"
           >
             {Array.from({ length: 12 }, (_, i) => i + 1).map(month => (
               <option key={month} value={month}>
@@ -146,10 +161,12 @@ export default function ComparePage() {
               </option>
             ))}
           </select>
+          <label htmlFor="year-select" className="sr-only">שנה</label>
           <select
+            id="year-select"
             value={selectedYear}
             onChange={(e) => setSelectedYear(Number(e.target.value))}
-            className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm focus:border-blue-500 outline-none"
+            className="w-full sm:w-auto px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-base focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 outline-none"
           >
             {yearOptions.map(year => (
               <option key={year} value={year}>{year}</option>
@@ -194,7 +211,9 @@ export default function ComparePage() {
             <button
               onClick={handleCompare}
               disabled={loading}
-              className="bg-blue-600 text-white px-8 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+              aria-busy={loading}
+              aria-disabled={loading}
+              className="bg-blue-600 text-white px-8 py-2.5 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               {loading ? 'מעבד...' : 'בצע השוואה'}
             </button>
@@ -207,19 +226,19 @@ export default function ComparePage() {
         <div>
           {/* Summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white rounded-xl shadow-sm border p-4 text-center">
+            <div className="bg-white rounded-xl shadow-sm border p-3 sm:p-4 text-center">
               <div className="text-3xl font-bold text-blue-600">{result.total_user_entries}</div>
               <div className="text-sm text-gray-500 mt-1">תעודות שהוזנו</div>
             </div>
-            <div className="bg-white rounded-xl shadow-sm border p-4 text-center">
+            <div className="bg-white rounded-xl shadow-sm border p-3 sm:p-4 text-center">
               <div className="text-3xl font-bold text-green-600">{result.matched_count}</div>
               <div className="text-sm text-gray-500 mt-1">נמצאו</div>
             </div>
-            <div className="bg-white rounded-xl shadow-sm border p-4 text-center">
+            <div className="bg-white rounded-xl shadow-sm border p-3 sm:p-4 text-center">
               <div className="text-3xl font-bold text-red-600">{result.missing_from_pdf_count}</div>
               <div className="text-sm text-gray-500 mt-1">חסרים ב-PDF</div>
             </div>
-            <div className="bg-white rounded-xl shadow-sm border p-4 text-center">
+            <div className="bg-white rounded-xl shadow-sm border p-3 sm:p-4 text-center">
               <div className="text-3xl font-bold text-amber-600">{result.extra_in_pdf_count}</div>
               <div className="text-sm text-gray-500 mt-1">לא הוזנו</div>
             </div>
@@ -230,15 +249,23 @@ export default function ComparePage() {
             <button
               onClick={handleSave}
               disabled={saved || isSaving}
+              aria-busy={isSaving}
+              aria-disabled={saved || isSaving}
               className={cn(
-                'px-6 py-2 rounded-lg font-medium transition-colors',
+                'px-6 py-2 rounded-lg font-medium transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
                 saved
                   ? 'bg-green-100 text-green-700'
                   : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed'
               )}
             >
-              {saved && <Check className="w-4 h-4" />}
-              <span>{saved ? 'נשמר בהצלחה' : isSaving ? 'שומר...' : 'שמור תוצאות'}</span>
+              {saved ? (
+                <span className="flex items-center gap-2">
+                  <Check className="w-4 h-4" />
+                  <span>נשמר בהצלחה</span>
+                </span>
+              ) : (
+                <span>{isSaving ? 'שומר...' : 'שמור תוצאות'}</span>
+              )}
             </button>
           </div>
 

@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { ComparisonResult, ComparisonItem } from '@/types';
 import { formatDate } from '@/lib/utils';
 import { ResultsTable } from '@/components/results-table';
 import { HistoryCardSkeleton } from '@/components/skeleton';
+import { ChevronRight } from 'lucide-react';
 
 interface StoredComparison extends ComparisonResult {
   id: string;
@@ -13,7 +15,7 @@ interface StoredComparison extends ComparisonResult {
 }
 
 export default function HistoryPage() {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [comparisons, setComparisons] = useState<StoredComparison[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<StoredComparison | null>(null);
@@ -21,12 +23,20 @@ export default function HistoryPage() {
   useEffect(() => {
     const fetchComparisons = async () => {
       setLoading(true);
-      const { data } = await supabase
-        .from('comparisons')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (data) setComparisons(data as StoredComparison[]);
-      setLoading(false);
+      try {
+        const { data } = await supabase
+          .from('comparisons')
+          .select('*')
+          .order('created_at', { ascending: false });
+        if (data) setComparisons(data as StoredComparison[]);
+      } catch (error) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Error fetching comparisons:', error);
+        }
+        toast.error('שגיאה בטעינת ההשוואות');
+      } finally {
+        setLoading(false);
+      }
     };
     fetchComparisons();
   }, [supabase]);
@@ -36,9 +46,9 @@ export default function HistoryPage() {
       <div>
         <button
           onClick={() => setSelected(null)}
-          className="text-blue-600 hover:underline mb-4 text-sm flex items-center gap-1"
+          className="text-blue-600 hover:underline mb-4 text-sm flex items-center gap-1 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded"
         >
-          ← חזרה לרשימה
+          <ChevronRight className="w-4 h-4" /> חזרה לרשימה
         </button>
 
         <h1 className="text-2xl font-bold mb-2">תוצאות השוואה</h1>
@@ -75,7 +85,7 @@ export default function HistoryPage() {
       <h1 className="text-2xl font-bold mb-6">היסטוריית השוואות</h1>
 
       {loading ? (
-        <div className="space-y-4">
+        <div className="space-y-4" aria-busy="true" aria-label="טוען היסטוריה...">
           {[1, 2, 3].map((i) => (
             <HistoryCardSkeleton key={i} />
           ))}
@@ -88,10 +98,10 @@ export default function HistoryPage() {
       ) : (
         <div className="space-y-4">
           {comparisons.map((comp) => (
-            <div
+            <button
               key={comp.id}
               onClick={() => setSelected(comp)}
-              className="bg-white rounded-xl shadow-sm border p-6 cursor-pointer hover:border-blue-300 transition-colors"
+              className="w-full bg-white rounded-xl shadow-sm border p-6 cursor-pointer hover:border-blue-300 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-right"
             >
               <div className="flex justify-between items-start">
                 <div>
@@ -113,7 +123,7 @@ export default function HistoryPage() {
                   </div>
                 </div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}

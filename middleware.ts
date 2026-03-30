@@ -25,7 +25,17 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  let user = null;
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (!error && data?.user) {
+      user = data.user;
+    }
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Middleware auth error:', error);
+    }
+  }
 
   const publicPaths = ['/login', '/register', '/pending-approval'];
   const isPublicPath = publicPaths.some(path => request.nextUrl.pathname.startsWith(path));

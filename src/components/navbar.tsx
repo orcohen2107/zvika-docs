@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, memo } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { BarChart3, Scale, ScrollText, Users, LogOut } from 'lucide-react';
@@ -8,57 +8,49 @@ import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import { Profile } from '@/types';
 
-export const Navbar = () => {
+type NavLink = {
+  href: string;
+  label: string;
+  Icon: typeof BarChart3;
+};
+
+const BASE_LINKS: NavLink[] = [
+  { href: '/dashboard', label: 'דשבורד', Icon: BarChart3 },
+  { href: '/dashboard/compare', label: 'השוואה', Icon: Scale },
+  { href: '/dashboard/history', label: 'היסטוריה', Icon: ScrollText },
+];
+
+const ADMIN_LINK: NavLink = { href: '/admin', label: 'ניהול משתמשים', Icon: Users };
+
+const NavbarComponent = () => {
   const router = useRouter();
   const pathname = usePathname();
   const supabase = useMemo(() => createClient(), []);
-  const [profile, setProfile] = useState<Profile | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const cached = localStorage.getItem('user_profile');
-    return cached ? JSON.parse(cached) : null;
-  });
+  const [profile, setProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
     const getProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        if (data) {
-          setProfile(data);
-          localStorage.setItem('user_profile', JSON.stringify(data));
-        }
-      } else {
-        localStorage.removeItem('user_profile');
-      }
+      if (!user) return;
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      if (data) setProfile(data);
     };
     getProfile();
   }, [supabase]);
 
   const handleLogout = async () => {
-    localStorage.removeItem('user_profile');
     await supabase.auth.signOut();
     router.push('/login');
   };
 
-  type NavLink = {
-    href: string;
-    label: string;
-    Icon: typeof BarChart3;
-  };
-
-  const links: NavLink[] = [
-    { href: '/dashboard', label: 'דשבורד', Icon: BarChart3 },
-    { href: '/dashboard/compare', label: 'השוואה', Icon: Scale },
-    { href: '/dashboard/history', label: 'היסטוריה', Icon: ScrollText },
-  ];
-
-  if (profile?.role === 'admin') {
-    links.push({ href: '/admin', label: 'ניהול משתמשים', Icon: Users });
-  }
+  const links = useMemo<NavLink[]>(
+    () => profile?.role === 'admin' ? [...BASE_LINKS, ADMIN_LINK] : BASE_LINKS,
+    [profile?.role]
+  );
 
   return (
     <nav className="bg-white shadow-sm border-b border-gray-200">
@@ -122,3 +114,7 @@ export const Navbar = () => {
     </nav>
   );
 };
+
+NavbarComponent.displayName = 'Navbar';
+
+export const Navbar = memo(NavbarComponent);
