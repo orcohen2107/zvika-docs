@@ -21,16 +21,8 @@ export async function GET(request: Request) {
     }
   );
 
-  const { data: pdfEntries } = await supabase
-    .from('pdf_entries')
-    .select('*');
-
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('*');
-
-  const { data: comparisons } = await supabase
-    .from('comparisons')
     .select('*');
 
   const { data: documents } = await supabase
@@ -84,7 +76,7 @@ export async function GET(request: Request) {
   }
 }
 
-function toCsv(data: any[]): string {
+function toCsv(data: Record<string, unknown>[]): string {
   if (!data.length) return '';
   const headers = Object.keys(data[0]);
   const rows = data.map(obj =>
