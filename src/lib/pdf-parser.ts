@@ -29,6 +29,13 @@ export const parsePdfText = (text: string): PdfEntry[] => {
         ? hebrewMatch
             .map(match => match.trim()) // Trim each match
             .filter(match => /[\u0590-\u05FF]{2,}/.test(match)) // Keep only matches with 2+ Hebrew letters
+            // pdf-parse extracts RTL runs in visual (reversed) order; reverse each run's
+            // characters (and its word order) back to logical reading order
+            .map(match => match
+              .split(' ')
+              .reverse()
+              .map(word => word.split('').reverse().map(ch => (ch === '(' ? ')' : ch === ')' ? '(' : ch)).join(''))
+              .join(' '))
             .join(' ') // Join with space
             .replace(/\s+/g, ' ') // Normalize spaces
         : '';
