@@ -1,5 +1,5 @@
 import { ComparisonItem, ComparisonResult, Document, PdfEntry } from '@/types';
-import { extractShortNumber } from './utils';
+import { extractShortNumber, formatDate } from './utils';
 
 export const compareDocuments = (
   userDocuments: Document[],
@@ -60,6 +60,7 @@ export const compareDocuments = (
         client_name: doc.client_name,
         status: 'missing_from_pdf',
         source: 'user',
+        date: formatDate(doc.created_at),
       });
       missingFromPdfCount++;
     }

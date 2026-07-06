@@ -8,25 +8,26 @@ import { Document, PdfEntry, ComparisonResult } from '@/types';
 import { compareDocuments } from '@/lib/comparison';
 import { cn } from '@/lib/utils';
 import { ResultsTable } from '@/components/results-table';
+import { usePersistedState } from '@/lib/use-persisted-state';
 
 export default function ComparePage() {
   const supabase = useMemo(() => createClient(), []);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<ComparisonResult | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [result, setResult] = usePersistedState<ComparisonResult | null>('compare:result', null);
+  const [saved, setSaved] = usePersistedState('compare:saved', false);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!saved) return;
     const timeoutId = setTimeout(() => setSaved(false), 3000);
     return () => clearTimeout(timeoutId);
-  }, [saved]);
+  }, [saved, setSaved]);
 
   // Month selector state
   const now = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [selectedMonth, setSelectedMonth] = usePersistedState('compare:selectedMonth', now.getMonth() + 1);
+  const [selectedYear, setSelectedYear] = usePersistedState('compare:selectedYear', now.getFullYear());
 
   // Generate year options (2 years back to 1 year forward)
   const currentYear = new Date().getFullYear();
@@ -49,7 +50,7 @@ export default function ComparePage() {
       setResult(null);
       setSaved(false);
     }
-  }, []);
+  }, [setResult, setSaved]);
 
   const handleCompare = async () => {
     if (!file) return;

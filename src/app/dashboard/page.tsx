@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Document } from '@/types';
 import { extractShortNumber, formatDate, DEBOUNCE_DELAY_MS } from '@/lib/utils';
 import { DocumentCardSkeleton } from '@/components/skeleton';
+import { usePersistedState } from '@/lib/use-persisted-state';
 
 const LazyLineChart = lazy(() =>
   import('recharts').then((mod) => ({
@@ -35,10 +36,10 @@ const LazyLineChart = lazy(() =>
 export default function DashboardPage() {
   const supabase = useMemo(() => createClient(), []);
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [docNumber, setDocNumber] = useState('');
-  const [clientName, setClientName] = useState('');
+  const [docNumber, setDocNumber] = usePersistedState('dashboard:docNumber', '');
+  const [clientName, setClientName] = usePersistedState('dashboard:clientName', '');
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = usePersistedState('dashboard:searchQuery', '');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [comparisons, setComparisons] = useState<Array<{
