@@ -23,7 +23,7 @@ export interface PdfEntry {
   date: string;
 }
 
-export type ComparisonStatus = 'matched' | 'missing_from_pdf' | 'extra_in_pdf';
+export type ComparisonStatus = 'matched' | 'missing_from_pdf' | 'extra_in_pdf' | 'duplicate_entry';
 
 export interface ComparisonItem {
   document_number: string;
@@ -44,6 +44,7 @@ export interface ComparisonResult {
   matched_count: number;
   missing_from_pdf_count: number;
   extra_in_pdf_count: number;
+  duplicate_count?: number; // derived from results; not stored as a DB column
   results: ComparisonItem[];
   created_at?: string;
 }

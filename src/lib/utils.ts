@@ -40,6 +40,7 @@ export const exportComparisonToCsv = (
     matched: 'נמצא',
     missing_from_pdf: 'חסר ב-PDF',
     extra_in_pdf: 'לא הוזן',
+    duplicate_entry: 'כפילות',
   };
 
   const headers = ['סטטוס', 'מספר תעודה', '4 ספרות', 'שם לקוח', 'מקור', 'סכום', 'תאריך'];

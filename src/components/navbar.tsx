@@ -1,5 +1,6 @@
 'use client';
 
+import { clearDashboardCache } from '@/lib/dashboard-cache';
 import { useState, useEffect, useMemo, memo } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
@@ -44,6 +45,7 @@ const NavbarComponent = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    clearDashboardCache();
     router.push('/login');
   };
 
