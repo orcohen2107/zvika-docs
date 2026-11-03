@@ -2,11 +2,12 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
-import { FileText, Check } from 'lucide-react';
+import { FileText, Check, Search } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { Document, PdfEntry, ComparisonResult } from '@/types';
+import { PdfEntry, ComparisonResult } from '@/types';
 import { compareDocuments } from '@/lib/comparison';
-import { cn } from '@/lib/utils';
+import { fetchAllDocuments } from '@/lib/fetch-documents';
+import { cn, DEBOUNCE_DELAY_MS } from '@/lib/utils';
 import { ResultsTable } from '@/components/results-table';
 import { usePersistedState } from '@/lib/use-persisted-state';
 
@@ -17,6 +18,24 @@ export default function ComparePage() {
   const [result, setResult] = usePersistedState<ComparisonResult | null>('compare:result', null);
   const [saved, setSaved] = usePersistedState('compare:saved', false);
   const [isSaving, setIsSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchQuery), DEBOUNCE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const filteredResults = useMemo(() => {
+    if (!result) return [];
+    const q = debouncedQuery.trim().toLowerCase();
+    if (!q) return result.results;
+    return result.results.filter(item =>
+      item.document_number.toLowerCase().includes(q) ||
+      item.document_number_short.includes(q) ||
+      item.client_name.toLowerCase().includes(q)
+    );
+  }, [result, debouncedQuery]);
 
   useEffect(() => {
     if (!saved) return;
@@ -79,21 +98,25 @@ export default function ComparePage() {
       }
       const user = data.user;
 
-      const { data: userDocs } = await supabase.from('documents').select('*').eq('user_id', user.id);
+      const userDocs = await fetchAllDocuments(supabase, {
+        userId: user.id,
+        month: { year: selectedYear, month: selectedMonth },
+      });
 
-      if (!userDocs || userDocs.length === 0) {
-        toast.error('אין תעודות שהוזנו במערכת. הוסף תעודות בדשבורד קודם.');
+      if (userDocs.length === 0) {
+        toast.error('אין תעודות שהוזנו בחודש שנבחר. הוסף תעודות בדשבורד קודם.');
         return;
       }
 
       const comparison = compareDocuments(
-        userDocs as Document[],
+        userDocs,
         pdfEntries,
         file.name,
         { year: selectedYear, month: selectedMonth }
       );
 
       setResult(comparison);
+      setSearchQuery('');
       toast.success('השוואה בוצעה בהצלחה');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'שגיאה בהשוואה');
@@ -226,7 +249,7 @@ export default function ComparePage() {
       {result && (
         <div>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className={cn('grid grid-cols-2 gap-4 mb-6', result.duplicate_count ? 'md:grid-cols-5' : 'md:grid-cols-4')}>
             <div className="bg-white rounded-xl shadow-sm border p-3 sm:p-4 text-center">
               <div className="text-3xl font-bold text-blue-600">{result.total_user_entries}</div>
               <div className="text-sm text-gray-500 mt-1">תעודות שהוזנו</div>
@@ -243,6 +266,12 @@ export default function ComparePage() {
               <div className="text-3xl font-bold text-amber-600">{result.extra_in_pdf_count}</div>
               <div className="text-sm text-gray-500 mt-1">לא הוזנו</div>
             </div>
+            {result.duplicate_count ? (
+              <div className="bg-white rounded-xl shadow-sm border p-3 sm:p-4 text-center">
+                <div className="text-3xl font-bold text-purple-600">{result.duplicate_count}</div>
+                <div className="text-sm text-gray-500 mt-1">כפילויות</div>
+              </div>
+            ) : null}
           </div>
 
           {/* Save button */}
@@ -270,8 +299,39 @@ export default function ComparePage() {
             </button>
           </div>
 
+          {/* Search within results */}
+          <div className="mb-4">
+            <label htmlFor="results-search" className="sr-only">חיפוש בתוצאות</label>
+            <div className="relative">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                id="results-search"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="חיפוש בתוצאות לפי מספר תעודה, לקוח..."
+                className="w-full pr-10 pl-4 py-3 md:py-2.5 bg-white border border-gray-200 rounded-lg text-base md:text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 outline-none transition-colors"
+              />
+            </div>
+            {debouncedQuery.trim() && (
+              <p className="text-sm text-gray-500 mt-2">
+                {filteredResults.length} מתוך {result.results.length} תוצאות
+              </p>
+            )}
+          </div>
+
           {/* Results table */}
-          <ResultsTable items={result.results} exportFilename={result.pdf_filename} />
+          {filteredResults.length === 0 ? (
+            <div className="bg-white rounded-xl shadow-sm border p-12 text-center text-gray-400">
+              <p className="text-lg">לא נמצאו תוצאות תואמות</p>
+            </div>
+          ) : (
+            <ResultsTable
+              items={filteredResults}
+              exportItems={result.results}
+              exportFilename={result.pdf_filename}
+            />
+          )}
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { toast } from 'sonner';
 import { BookOpen, Plus, Trash2, Search } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -8,6 +8,8 @@ import { Document } from '@/types';
 import { extractShortNumber, formatDate, DEBOUNCE_DELAY_MS } from '@/lib/utils';
 import { DocumentCardSkeleton } from '@/components/skeleton';
 import { usePersistedState } from '@/lib/use-persisted-state';
+import { fetchDocumentsPage } from '@/lib/fetch-documents';
+import { getDashboardCache, setDashboardCache, ComparisonSummary } from '@/lib/dashboard-cache';
 
 const LazyLineChart = lazy(() =>
   import('recharts').then((mod) => ({
@@ -35,49 +37,92 @@ const LazyLineChart = lazy(() =>
 
 export default function DashboardPage() {
   const supabase = useMemo(() => createClient(), []);
-  const [documents, setDocuments] = useState<Document[]>([]);
+  const [documents, setDocuments] = useState<Document[]>(() => getDashboardCache()?.documents ?? []);
+  const [total, setTotal] = useState(() => getDashboardCache()?.total ?? 0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [docNumber, setDocNumber] = usePersistedState('dashboard:docNumber', '');
   const [clientName, setClientName] = usePersistedState('dashboard:clientName', '');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => getDashboardCache() === null || searchQuery.trim() !== '');
   const [searchQuery, setSearchQuery] = usePersistedState('dashboard:searchQuery', '');
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [comparisons, setComparisons] = useState<Array<{
-    matched_count: number;
-    total_user_entries: number;
-    created_at: string;
-  }>>([]);
+  const [comparisons, setComparisons] = useState<ComparisonSummary[]>(
+    () => getDashboardCache()?.comparisons ?? []
+  );
 
-  const fetchDocuments = useCallback(async () => {
+  const requestIdRef = useRef(0);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  const loadComparisons = useCallback(async (): Promise<ComparisonSummary[]> => {
+    const { data } = await supabase
+      .from('comparisons')
+      .select('matched_count, total_user_entries, created_at')
+      .order('created_at', { ascending: true })
+      .limit(10);
+    return (data ?? []) as ComparisonSummary[];
+  }, [supabase]);
+
+  // Loads the first page (newest documents, or search matches). Resets the list.
+  const loadFirstPage = useCallback(async (search: string, withComparisons: boolean) => {
+    const requestId = ++requestIdRef.current;
     setLoading(true);
 
     try {
-      const { data: docs } = await supabase
-        .from('documents')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (docs) setDocuments(docs);
+      const [page, freshComparisons] = await Promise.all([
+        fetchDocumentsPage(supabase, { offset: 0, search }),
+        withComparisons ? loadComparisons() : Promise.resolve(null),
+      ]);
+      if (requestId !== requestIdRef.current) return; // a newer request superseded this one
 
-      // Fetch comparisons for analytics
-      const { data: comps } = await supabase
-        .from('comparisons')
-        .select('matched_count, total_user_entries, created_at')
-        .order('created_at', { ascending: true })
-        .limit(10);
-      if (comps) setComparisons(comps as Array<{ matched_count: number; total_user_entries: number; created_at: string }>);
+      setDocuments(page.documents);
+      setTotal(page.total);
+      if (freshComparisons) setComparisons(freshComparisons);
+
+      if (!search.trim()) {
+        setDashboardCache({
+          documents: page.documents,
+          total: page.total,
+          comparisons: freshComparisons ?? getDashboardCache()?.comparisons ?? [],
+        });
+      }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Error fetching documents:', error);
       }
       toast.error('שגיאה בטעינת הנתונים');
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [supabase]);
+  }, [supabase, loadComparisons]);
 
-  useEffect(() => {
-    fetchDocuments();
-  }, [fetchDocuments]);
+  // Appends the next page when scrolling reaches the bottom.
+  const loadMore = useCallback(async () => {
+    const requestId = requestIdRef.current;
+    setLoadingMore(true);
+
+    try {
+      const page = await fetchDocumentsPage(supabase, {
+        offset: documents.length,
+        search: debouncedSearchQuery,
+      });
+      if (requestId !== requestIdRef.current) return;
+
+      const merged = [...documents, ...page.documents.filter(d => !documents.some(e => e.id === d.id))];
+      setDocuments(merged);
+      setTotal(page.total);
+
+      if (!debouncedSearchQuery.trim()) {
+        setDashboardCache({ documents: merged, total: page.total, comparisons });
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Error loading more documents:', error);
+      }
+      toast.error('שגיאה בטעינת תעודות נוספות');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [supabase, documents, debouncedSearchQuery, comparisons]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -86,15 +131,33 @@ export default function DashboardPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const filteredDocuments = useMemo(() => {
-    if (!debouncedSearchQuery.trim()) return documents;
-    const q = debouncedSearchQuery.trim();
-    return documents.filter(doc =>
-      doc.document_number.toLowerCase().includes(q.toLowerCase()) ||
-      doc.document_number_short.includes(q) ||
-      doc.client_name.includes(q) // Hebrew text: no toLowerCase, match exactly
+  // Fetch on first visit / full refresh, and whenever the search changes.
+  // With a warm cache and no search, navigating back skips the fetch entirely.
+  const skipNextFetchRef = useRef(getDashboardCache() !== null && !debouncedSearchQuery.trim());
+  useEffect(() => {
+    if (skipNextFetchRef.current) {
+      skipNextFetchRef.current = false;
+      return;
+    }
+    const isFirstEver = getDashboardCache() === null;
+    loadFirstPage(debouncedSearchQuery, isFirstEver);
+  }, [debouncedSearchQuery, loadFirstPage]);
+
+  const hasMore = documents.length < total;
+
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node || !hasMore || loading || loadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore();
+      },
+      { rootMargin: '400px' }
     );
-  }, [documents, debouncedSearchQuery]);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, loadMore]);
 
   const chartData = useMemo(() => {
     return comparisons.map(c => ({
@@ -161,7 +224,7 @@ export default function DashboardPage() {
       setDocNumber('');
       setClientName('');
       toast.success('תעודה נוספה בהצלחה');
-      await fetchDocuments();
+      await loadFirstPage(debouncedSearchQuery, true);
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Error adding document:', error);
@@ -187,7 +250,13 @@ export default function DashboardPage() {
       }
       toast.success('הרשומה נמחקה בהצלחה');
       setDeleteConfirm(null);
-      await fetchDocuments();
+      const remaining = documents.filter(d => d.id !== id);
+      const newTotal = Math.max(0, total - 1);
+      setDocuments(remaining);
+      setTotal(newTotal);
+      if (!debouncedSearchQuery.trim()) {
+        setDashboardCache({ documents: remaining, total: newTotal, comparisons });
+      }
     } catch (error) {
       if (process.env.NODE_ENV === 'development') {
         console.error('Error deleting document:', error);
@@ -264,7 +333,7 @@ export default function DashboardPage() {
           <h2 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
             <BookOpen className="w-8 h-8 text-gray-700" />
             תעודות שהוזנו
-            <span className="text-blue-600 ml-2">({debouncedSearchQuery ? `${filteredDocuments.length} / ${documents.length}` : documents.length})</span>
+            <span className="text-blue-600 ml-2">({total})</span>
           </h2>
         </div>
 
@@ -290,7 +359,7 @@ export default function DashboardPage() {
               <DocumentCardSkeleton key={i} />
             ))}
           </div>
-        ) : filteredDocuments.length === 0 && documents.length === 0 ? (
+        ) : documents.length === 0 && !debouncedSearchQuery.trim() ? (
           <div className="relative overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl py-20 px-8 border-2 border-dashed border-gray-300 flex flex-col items-center text-center">
             <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-blue-100 rounded-full blur-3xl opacity-30"></div>
             <div className="absolute -top-10 -left-10 w-40 h-40 bg-gray-200 rounded-full blur-3xl opacity-20"></div>
@@ -302,14 +371,14 @@ export default function DashboardPage() {
               הוסף תעודות חדשות באמצעות הטופס למעלה כדי להתחיל לנהל את המערכת שלך בצורה חכמה
             </p>
           </div>
-        ) : filteredDocuments.length === 0 && debouncedSearchQuery ? (
+        ) : documents.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center text-gray-400">
             <p className="text-lg">לא נמצאו תעודות תואמות</p>
             <p className="text-sm mt-1">נסה חיפוש אחר</p>
           </div>
         ) : (
           <div className="grid gap-4">
-            {filteredDocuments.map((doc) => (
+            {documents.map((doc) => (
               <div
                 key={doc.id}
                 className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-lg hover:border-blue-200 transition-all"
@@ -368,6 +437,12 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))}
+            <div ref={sentinelRef} aria-hidden="true" />
+            {loadingMore && (
+              <div className="grid gap-4" aria-busy="true" aria-label="טוען עוד תעודות...">
+                <DocumentCardSkeleton />
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -376,7 +451,7 @@ export default function DashboardPage() {
       <section className="space-y-6 pt-8 pb-8">
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-            <div className="text-3xl font-bold text-blue-600 mb-1">{documents.length}</div>
+            <div className="text-3xl font-bold text-blue-600 mb-1">{total}</div>
             <div className="text-xs text-gray-600 font-medium uppercase">תעודות</div>
           </div>
           <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
